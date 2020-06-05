@@ -1,1 +1,3 @@
 START /home/francesco/Develop/Javanile/bump.sh
+COPY Makefile
+COPY .editorconfig

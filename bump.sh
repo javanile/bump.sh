@@ -1,107 +1,109 @@
 #!/usr/bin/env bash
 
-# Usage: ./bump_version.sh <major|minor|patch> - Increments the relevant version part by one.
-#
-# Usage 2: ./bump_version.sh <version-from> <version-to>
-# 	e.g: ./bump_version.sh 1.1.1 2.0
-
 set -e
 
+##
 # Define which files to update and the pattern to look for
+#
 # $1 Current version
 # $2 New version
-function bump_files() {
-	bump package.json "\"version\": \"$1\"" "\"version\": \"$2\""
+##
+bump_files () {
+    [[ -f "${2}/package.json" ]] && bump_package_json "$1" "${2}"
 	#bump README.md "my-plugin v$current_version" "my-plugin v$new_version"
 }
 
-function bump() {
-	echo -n "Updating $1..."
+##
+#
+##
+bump_package_json () {
+	from_version=$(grep -Po '(?<="version": ")[^"]*' "${2}/package.json")
+	next_version=$(bump_version "$1" "${from_version}")
+
+	echo "${from_version} --> ${next_version}"
+	file_update \
+	    "${2}/package.json" \
+	    "\"version\": \"${from_version}\"" \
+	    "\"version\": \"${next_version}\""
+}
+
+##
+#
+##
+file_update () {
 	tmp_file=$(mktemp)
-	rm -f "$tmp_file"
-	sed -i "s/$2/$3/1w $tmp_file" $1
-	if [ -s "$tmp_file" ]; then
-		echo "Done"
-	else
-		echo "Nothing to change"
-	fi
-	rm -f "$tmp_file"
+	rm -f "${tmp_file}"
+	sed -i "s/$2/$3/1w ${tmp_file}" $1
+	rm -f "${tmp_file}"
 }
 
-function confirm() {
-	read -r -p "$@ [Y/n]: " confirm
+##
+#
+##
+bump_version () {
+    from_version=${2:-0.0.0}
 
-	case "$confirm" in
-		[Nn][Oo]|[Nn])
-			echo "Aborting."
-			exit
-			;;
-	esac
+    IFS='.' read -a parts <<< "${from_version}"
+
+    major=${parts[0]}
+    minor=${parts[1]}
+    patch=${parts[2]}
+
+    case "$1" in
+        major)
+            major=$((major + 1))
+            minor=0
+            patch=0
+            ;;
+        minor)
+            minor=$((minor + 1))
+            patch=0
+            ;;
+        patch)
+            patch=$((patch + 1))
+            ;;
+        *)
+            echo "Fail."
+            exit 1
+            ;;
+    esac
+
+    next_version="${major}.${minor}.${patch}"
+
+    if [[ "${next_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo ${next_version}
+    else
+        echo ${from_version}
+    fi
 }
 
-if [ "$1" == "" ]; then
-	echo >&2 "No 'from' version set. Aborting."
-	exit 1
-fi
+main () {
+    if [ "$1" == "" ]; then
+        echo >&2 "No 'from' version set. Aborting."
+        exit 1
+    fi
 
-if [ "$1" == "major" ] || [ "$1" == "minor" ] || [ "$1" == "patch" ]; then
-	current_version=$(grep -Po '(?<="version": ")[^"]*' package.json)
 
-	IFS='.' read -a version_parts <<< "$current_version"
+    confirm "Bump version number from $current_version to $new_version?"
 
-	major=${version_parts[0]}
-	minor=${version_parts[1]}
-	patch=${version_parts[2]}
+    bump_files "$current_version" "$new_version"
 
-	case "$1" in
-		"major")
-			major=$((major + 1))
-			minor=0
-			patch=0
-			;;
-		"minor")
-			minor=$((minor + 1))
-			patch=0
-			;;
-		"patch")
-			patch=$((patch + 1))
-			;;
-	esac
-	new_version="$major.$minor.$patch"
-else
-	if [ "$2" == "" ]; then
-		echo >&2 "No 'to' version set. Aborting."
-		exit 1
-	fi
-	current_version="$1"
-	new_version="$2"
-fi
 
-if ! [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-	echo >&2 "'to' version doesn't look like a valid semver version tag (e.g: 1.2.3). Aborting."
-	exit 1
-fi
+    new_tag="v$new_version"
+}
 
-confirm "Bump version number from $current_version to $new_version?"
+##
+#
+##
+main () {
+    if [[ -z "$1" ]]; then
+        echo >&2 "No 'from' version set. Aborting."
+        exit 1
+    fi
 
-bump_files "$current_version" "$new_version"
+    cwd=${2:-./}
 
-grunt
+    bump_files $1 ${cwd}
+}
 
-new_tag="v$new_version"
 
-confirm "Publish $new_tag?"
-
-echo "Committing changed files..."
-git add --all
-git commit -m "Bumped version to $new_version"
-
-echo "Adding new version tag: $new_tag..."
-git tag "$new_tag"
-
-current_branch=$(git symbolic-ref --short HEAD)
-
-echo "Pushing branch $current_branch and tag $new_tag upstream..."
-git push "$current_branch $new_tag"
-
-npm publish
