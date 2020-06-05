@@ -77,21 +77,6 @@ bump_version () {
     fi
 }
 
-main () {
-    if [ "$1" == "" ]; then
-        echo >&2 "No 'from' version set. Aborting."
-        exit 1
-    fi
-
-
-    confirm "Bump version number from $current_version to $new_version?"
-
-    bump_files "$current_version" "$new_version"
-
-
-    new_tag="v$new_version"
-}
-
 ##
 #
 ##
@@ -106,4 +91,5 @@ main () {
     bump_files $1 ${cwd}
 }
 
-
+## Entry-point
+main "${@}"
